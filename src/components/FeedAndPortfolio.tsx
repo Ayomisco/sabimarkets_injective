@@ -39,7 +39,7 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
 
   // Hero modal states
   const [isHeroBetOpen, setHeroBetOpen] = useState(false);
-  const [heroOutcome, setHeroOutcome] = useState<"YES" | "NO" | null>(null);
+  const [heroOutcome, setHeroOutcome] = useState<string | null>(null);
   const [isHeroDetailOpen, setHeroDetailOpen] = useState(false);
 
   // Search state
@@ -56,7 +56,7 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
     );
   }, [feedMarkets, searchQuery]);
 
-  const handleHeroBet = (outcome: "YES" | "NO") => {
+  const handleHeroBet = (outcome: string) => {
     setHeroOutcome(outcome);
     setHeroBetOpen(true);
   };
