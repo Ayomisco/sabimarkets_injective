@@ -6,7 +6,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { X, Loader2, Zap, ArrowUpRight, ArrowDownRight, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAccount, useSignTypedData, useReadContract } from 'wagmi';
 import { useToast } from '@/components/Toast';
-import { parseUnits, formatUnits } from 'viem';
+import { formatUnits } from 'viem';
 import { useMarketStore } from '@/store/marketStore';
 
 // Polymarket CTF Exchange on Polygon
@@ -19,14 +19,13 @@ const USDC_ABI = [
   { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
 
-// Spread markup: 0.5%
-const SPREAD_BPS = 50;
+// No spread — use Polymarket's exact prices
 
 export function BetModal({
-  isOpen, onClose, market, selectedOutcome: initialOutcome, currentPrice,
+  isOpen, onClose, market, selectedOutcome: initialOutcome,
 }: {
   isOpen: boolean; onClose: () => void; market: Market | null;
-  selectedOutcome: "YES" | "NO" | null; currentPrice: number;
+  selectedOutcome: "YES" | "NO" | null; currentPrice?: number;
 }) {
   const [amount, setAmount] = useState<number | string>(10);
   const [isSigning, setIsSigning] = useState(false);
@@ -84,18 +83,18 @@ export function BetModal({
   if (!market || !selectedOutcome) return null;
 
   const validAmount = typeof amount === 'string' && amount === "" ? 0 : Number(amount);
-  // Apply spread to price: buy slightly higher, sell slightly lower
-  // Ensure basePrice is valid (between 0.01 and 0.99)
-  const safeBasePrice = Math.max(0.01, Math.min(0.99, basePrice || 0.5));
-  const spreadPrice = isYes
-    ? Math.min(0.99, safeBasePrice * (1 + SPREAD_BPS / 10000))
-    : Math.max(0.01, safeBasePrice * (1 - SPREAD_BPS / 10000));
 
-  const yesPriceInCents = Math.round(yesPrice * 100);
-  const noPriceInCents = Math.round(noPrice * 100);
-  const shares = spreadPrice > 0 ? (validAmount / spreadPrice).toFixed(1) : "0.0";
-  const potentialPayoutDollars = parseFloat(shares);
-  const profitDollars = potentialPayoutDollars - validAmount;
+  // Use Polymarket's exact price (no spread markup)
+  const price = Math.max(0.01, Math.min(0.99, basePrice));
+
+  // Prices in cents for display
+  const yesPriceCents = Math.round(yesPrice * 100);
+  const noPriceCents = Math.round(noPrice * 100);
+
+  // Shares = amount / price per share (each share pays $1 if outcome wins)
+  const shares = price > 0 ? (validAmount / price).toFixed(1) : "0.0";
+  const potentialPayoutDollars = parseFloat(shares); // total payout if you win
+  const profitDollars = potentialPayoutDollars - validAmount; // net profit
   const roi = validAmount > 0 ? ((profitDollars / validAmount) * 100).toFixed(0) : "0";
 
   const usdcBalanceFormatted = usdcBalance
@@ -131,7 +130,7 @@ export function BetModal({
 
     try {
       const salt = BigInt(Date.now());
-      const makerAmount = BigInt(Math.round(spreadPrice * validAmount * 1_000_000));
+      const makerAmount = BigInt(Math.round(price * validAmount * 1_000_000));
       const takerAmount = BigInt(Math.round(validAmount * 1_000_000));
 
       // Sign the EIP-712 order with user's wallet
@@ -185,7 +184,7 @@ export function BetModal({
         body: JSON.stringify({
           tokenId,
           side: isYes ? 'BUY' : 'SELL',
-          price: spreadPrice,
+          price: price,
           size: validAmount,
           userAddress: address,
           signature,
@@ -202,7 +201,7 @@ export function BetModal({
       setStep('done');
       toastSuccess(
         '🎉 Order placed!',
-        `${shares} ${selectedOutcome} shares @ ${isYes ? yesPriceInCents : noPriceInCents}¢. Order ID: ${data.orderId?.slice(0, 8)}...`
+        `${shares} ${selectedOutcome} shares @ ${isYes ? yesPriceCents : noPriceCents}¢. Order ID: ${data.orderId?.slice(0, 8)}...`
       );
       setTimeout(() => { onClose(); setStep('idle'); }, 2000);
 
@@ -277,14 +276,14 @@ export function BetModal({
               className="cursor-pointer py-3 rounded-xl border font-bold text-sm flex items-center justify-center gap-1.5 transition-all"
               style={isYes ? { backgroundColor: '#00D26A', borderColor: '#00D26A', color: '#000', boxShadow: '0 4px 18px rgba(0,210,106,0.35)' }
                           : { borderColor: 'rgba(255,255,255,0.08)', color: '#7A7068' }}>
-              <ArrowUpRight size={14} /> YES · {yesPriceInCents}¢
+              <ArrowUpRight size={14} /> YES · {yesPriceCents}¢
             </button>
             <button 
               onClick={() => setSelectedOutcome('NO')}
               className="cursor-pointer py-3 rounded-xl border font-bold text-sm flex items-center justify-center gap-1.5 transition-all"
               style={!isYes ? { backgroundColor: '#FF4560', borderColor: '#FF4560', color: '#fff', boxShadow: '0 4px 18px rgba(255,69,96,0.35)' }
                            : { borderColor: 'rgba(255,255,255,0.08)', color: '#7A7068' }}>
-              <ArrowDownRight size={14} /> NO · {noPriceInCents}¢
+              <ArrowDownRight size={14} /> NO · {noPriceCents}¢
             </button>
           </div>
 
@@ -329,7 +328,7 @@ export function BetModal({
             </div>
             <div className="flex justify-between items-center px-4 py-2.5 text-[12px]">
               <span className="text-[#7A7068]">Avg Price</span>
-              <span className="font-mono font-bold text-white">{(spreadPrice * 100).toFixed(1)}¢</span>
+              <span className="font-mono font-bold text-white">{(price * 100).toFixed(1)}¢</span>
             </div>
             <div className="flex justify-between items-center px-4 py-2.5 text-[12px]">
               <span className="text-[#7A7068]">Potential Return</span>
