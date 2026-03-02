@@ -264,19 +264,19 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
                     <div><p className="text-[#7A7068] text-[10px] uppercase mb-1 font-medium">Source</p>
                          <p className="text-lg font-bold text-white font-mono">Polymarket</p></div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3">
                     <button onClick={() => handleHeroBet('YES')}
-                      className="cursor-pointer flex-1 sm:flex-none sm:px-8 py-3 rounded-xl font-bold text-[14px] text-black transition-all hover:opacity-90 active:scale-[0.98]"
+                      className="cursor-pointer flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-lg sm:rounded-xl font-bold text-[12px] sm:text-[14px] text-black transition-all hover:opacity-90 active:scale-[0.98]"
                       style={{ background: 'linear-gradient(135deg, #00D26A, #009A4E)', boxShadow: '0 4px 20px rgba(0,210,106,0.3)' }}>
-                      Bet YES · {Math.round(heroYesPrice * 100)}¢
+                      <span className="hidden xs:inline">Bet </span>YES · {Math.round(heroYesPrice * 100)}¢
                     </button>
                     <button onClick={() => handleHeroBet('NO')}
-                      className="cursor-pointer flex-1 sm:flex-none sm:px-8 py-3 rounded-xl font-bold text-[14px] text-white transition-all hover:opacity-90 active:scale-[0.98]"
+                      className="cursor-pointer flex-1 sm:flex-none px-4 sm:px-8 py-2 sm:py-3 rounded-lg sm:rounded-xl font-bold text-[12px] sm:text-[14px] text-white transition-all hover:opacity-90 active:scale-[0.98]"
                       style={{ background: 'linear-gradient(135deg, #FF4560, #CC2E45)', boxShadow: '0 4px 20px rgba(255,69,96,0.3)' }}>
-                      Bet NO · {100 - Math.round(heroYesPrice * 100)}¢
+                      <span className="hidden xs:inline">Bet </span>NO · {100 - Math.round(heroYesPrice * 100)}¢
                     </button>
                     <button onClick={() => setHeroDetailOpen(true)}
-                      className="cursor-pointer flex items-center gap-1.5 text-[#7A7068] hover:text-white text-sm font-medium transition-colors px-3 py-3 rounded-xl border border-white/[0.07] hover:bg-white/[0.05]">
+                      className="cursor-pointer hidden sm:flex items-center gap-1.5 text-[#7A7068] hover:text-white text-sm font-medium transition-colors px-3 py-3 rounded-xl border border-white/[0.07] hover:bg-white/[0.05]">
                       View Details ↗
                     </button>
                   </div>
