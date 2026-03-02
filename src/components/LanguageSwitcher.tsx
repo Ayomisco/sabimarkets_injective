@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useLocale } from 'next-intl';
-import { ChevronDown, Globe, Loader2, X } from 'lucide-react';
+import { ChevronDown, Globe, Loader2 } from 'lucide-react';
 
 const LANGUAGES = [
   { code: 'en',  label: 'English',         flag: '🇬🇧', region: 'Global' },
@@ -28,19 +28,10 @@ const KNOWN_LOCALES = LANGUAGES.map(l => l.code);
 export function LanguageSwitcher() {
   const locale = useLocale();
   const [isOpen, setIsOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const currentLang = LANGUAGES.find(l => l.code === locale) || LANGUAGES[0];
-
-  const handleToggle = () => {
-    if (!isOpen) {
-      // Detect at click time — always accurate, no SSR issue
-      setIsMobile(window.innerWidth < 640);
-    }
-    setIsOpen(v => !v);
-  };
 
   const handleSelect = (code: string) => {
     if (code === locale) { setIsOpen(false); return; }
@@ -63,12 +54,6 @@ export function LanguageSwitcher() {
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
   }, []);
-
-  // Lock body scroll when sheet is open on mobile
-  useEffect(() => {
-    document.body.style.overflow = isOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [isOpen]);
 
   const LanguageList = (
     <>
@@ -99,7 +84,7 @@ export function LanguageSwitcher() {
       <div ref={wrapperRef} className="relative">
         {/* ── Single trigger button (always visible) ── */}
         <button
-          onClick={handleToggle}
+          onClick={() => setIsOpen(v => !v)}
           disabled={loading}
           className="cursor-pointer flex items-center gap-1.5 px-2.5 py-1.5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] rounded-lg text-[13px] text-[#ccc] hover:text-white transition-all disabled:opacity-60"
         >
@@ -111,50 +96,18 @@ export function LanguageSwitcher() {
           <ChevronDown size={12} className={`text-[#7A7068] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        {/* ── Desktop dropdown (sm+) ── */}
-        {isOpen && !isMobile && (
+        {/* ── Dropdown (all screen sizes) ── */}
+        {isOpen && (
           <div className="absolute right-0 top-full mt-2 w-64 bg-[#0F0D0B] border border-white/[0.09] rounded-xl shadow-2xl z-[999] overflow-hidden">
             <div className="px-3 py-2 border-b border-white/[0.06]">
               <p className="text-[10px] font-semibold text-[#7A7068] uppercase tracking-widest">Language</p>
             </div>
-            <div className="max-h-80 overflow-y-auto overscroll-contain">
+            <div className="max-h-72 overflow-y-auto overscroll-contain">
               {LanguageList}
             </div>
           </div>
         )}
       </div>
-
-      {/* ── Mobile full-screen bottom sheet (below sm) ── */}
-      {isOpen && isMobile && (
-        <div className="fixed inset-0 z-[999] flex flex-col justify-end">
-          {/* Scrim */}
-          <div
-            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-            onClick={() => setIsOpen(false)}
-          />
-          {/* Sheet */}
-          <div className="relative bg-[#0F0D0B] rounded-t-2xl border-t border-white/[0.08] flex flex-col max-h-[85dvh] z-10">
-            {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-1 shrink-0">
-              <div className="w-10 h-1 rounded-full bg-white/20" />
-            </div>
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.07] shrink-0">
-              <p className="font-bold text-white text-[15px]">Choose Language</p>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="cursor-pointer p-1.5 rounded-lg bg-white/[0.06] text-[#7A7068] hover:text-white transition-colors"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            {/* Scrollable list */}
-            <div className="overflow-y-auto overscroll-contain flex-1 pb-10">
-              {LanguageList}
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
