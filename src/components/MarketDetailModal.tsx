@@ -10,8 +10,9 @@ import { useToast } from './Toast';
 import { useAccount, useReadContract, useChainId, useSwitchChain } from 'wagmi';
 import { polygon } from 'wagmi/chains';
 import { formatUnits } from 'viem';
+import { useAnalytics } from '@/hooks/useAnalytics';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const USDC_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
 const USDC_ABI = [
@@ -34,10 +35,18 @@ export function MarketDetailModal({
   const chainId = useChainId();
   const { switchChainAsync } = useSwitchChain();
   const { error: toastError, warning: toastWarning, success: toastSuccess } = useToast();
+  const { trackView, trackOrder } = useAnalytics();
 
   const [selectedOutcome, setSelectedOutcome] = useState<string>("YES");
   const [orderAmount, setOrderAmount] = useState<number | string>(10);
   const [isSwitchingChain, setIsSwitchingChain] = useState(false);
+
+  // Track market view when modal opens
+  useEffect(() => {
+    if (isOpen && market) {
+      trackView(market.condition_id, market.question, 'modal', address);
+    }
+  }, [isOpen, market?.condition_id]);
 
   // Read USDC balance — force Polygon RPC regardless of wallet's current chain
   const { data: usdcBalance } = useReadContract({
@@ -344,6 +353,18 @@ export function MarketDetailModal({
                               } finally {
                                 setIsSwitchingChain(false);
                               }
+                            }
+                            // Track order
+                            if (address) {
+                              await trackOrder(
+                                address,
+                                market.condition_id,
+                                market.question,
+                                validAmount,
+                                selectedOutcome,
+                                boundedPrice,
+                                'pending'
+                              );
                             }
                             if (onBet) { onBet(selectedOutcome, boundedPrice); onClose(); }
                           }}

@@ -8,6 +8,7 @@ import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { ToastProvider } from '@/components/Toast';
+import { AnalyticsProvider } from '@/components/AnalyticsProvider';
 
 const config = getDefaultConfig({
     appName: 'SabiMarket',
@@ -30,6 +31,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                     overlayBlur: 'small',
                 })}>
                     <ToastProvider>
+                        <AnalyticsProvider />
                         {children}
                         <Analytics />
                         <SpeedInsights />

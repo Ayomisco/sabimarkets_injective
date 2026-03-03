@@ -8,14 +8,22 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  walletAddress String    @unique
-  email         String?   @unique
+  id            String        @id @default(uuid())
+  walletAddress String        @unique
+  email         String?       @unique
   username      String?
-  points        Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  points        Int           @default(0)
+  language      String        @default("en")
+  provider      String? // metamask, phantom, coinbase, etc.
+  referrer      String? // referral source
+  isBlacklisted Boolean       @default(false)
+  lastSeen      DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   comments      Comment[] // Relation to comments
+  orders        Order[]
+  marketViews   MarketView[]
+  sessions      UserSession[]
 }
 
 model MarketCuration {
@@ -29,11 +37,11 @@ model MarketCuration {
 
 model Comment {
   id        String    @id @default(uuid())
-  marketId  String    // Polymarket condition_id
+  marketId  String // Polymarket condition_id
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   content   String    @db.Text
-  parentId  String?   // For nested replies
+  parentId  String? // For nested replies
   parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies   Comment[] @relation("CommentReplies")
   likes     Int       @default(0)
@@ -44,4 +52,92 @@ model Comment {
   @@index([marketId])
   @@index([userId])
   @@index([parentId])
+}
+
+// Analytics Models
+
+model Order {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketId    String // Polymarket condition_id
+  marketTitle String?
+  amount      Float
+  outcome     String // YES/NO
+  price       Float
+  status      String // pending, filled, cancelled, failed
+  txHash      String?
+  errorReason String?
+  createdAt   DateTime  @default(now())
+  filledAt    DateTime?
+
+  @@index([userId])
+  @@index([marketId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model MarketView {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketId    String
+  marketTitle String?
+  source      String? // homepage, search, direct, notification
+  timestamp   DateTime @default(now())
+
+  @@index([userId])
+  @@index([marketId])
+  @@index([timestamp])
+}
+
+model UserSession {
+  id        String    @id @default(uuid())
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId String    @unique
+  device    String? // mobile, desktop
+  language  String?
+  referrer  String?
+  startTime DateTime  @default(now())
+  endTime   DateTime?
+  pageViews Int       @default(1)
+
+  @@index([userId])
+  @@index([startTime])
+}
+
+model DailyAnalytics {
+  id            String   @id @default(uuid())
+  date          DateTime @unique @db.Date
+  activeUsers   Int      @default(0)
+  newUsers      Int      @default(0)
+  totalVolume   Float    @default(0)
+  totalOrders   Int      @default(0)
+  avgOrderSize  Float    @default(0)
+  marketViews   Int      @default(0)
+  uniqueMarkets Int      @default(0)
+  successRate   Float    @default(0) // % of filled orders
+
+  @@index([date])
+}
+
+model ModeratedMarket {
+  id          String   @id @default(uuid())
+  marketId    String   @unique
+  marketTitle String?
+  reason      String
+  action      String // hidden, flagged, allowed
+  moderatorId String?
+  timestamp   DateTime @default(now())
+
+  @@index([action])
+  @@index([timestamp])
+}
+
+model AdminUser {
+  id            String   @id @default(uuid())
+  walletAddress String   @unique
+  role          String   @default("admin") // admin, moderator
+  createdAt     DateTime @default(now())
 }
