@@ -40,19 +40,6 @@ export const metadata: Metadata = {
     images: ['/sabimarket-logo.png'],
     creator: '@sabimarket',
   },
-  icons: [
-    {
-      rel: 'icon',
-      type: 'image/png',
-      sizes: '32x32',
-      url: '/sabimarket-logo.png',
-    },
-    {
-      rel: 'apple-touch-icon',
-      sizes: '180x180',
-      url: '/sabimarket-logo.png',
-    },
-  ],
   manifest: '/site.webmanifest',
 };
 
