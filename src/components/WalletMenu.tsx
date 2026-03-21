@@ -48,8 +48,8 @@ export function WalletMenu() {
     }
   };
 
-  const handleViewOnPolygon = () => {
-    if (address) window.open(`https://polygonscan.com/address/${address}`, '_blank');
+  const handleViewOnInjective = () => {
+    if (address) window.open(`https://testnet.blockscout.injective.network/address/${address}`, '_blank');
   };
 
   if (!mounted) {
@@ -109,7 +109,7 @@ export function WalletMenu() {
                 <p className="font-semibold text-white text-[14px] truncate">{short}</p>
                 <p className="text-[11px] text-[#7A7068] flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#00D26A] animate-pulse inline-block" />
-                  Connected · Polygon
+                  Connected · Injective EVM
                 </p>
               </div>
             </div>
@@ -134,10 +134,10 @@ export function WalletMenu() {
               onClick={handleCopy}
               color={copied ? '#00D26A' : undefined}
             />
-            <MenuItem 
-              icon={ExternalLink} 
-              label="View on Polygon Scan" 
-              onClick={handleViewOnPolygon} 
+            <MenuItem
+              icon={ExternalLink}
+              label="View on Injective Explorer"
+              onClick={handleViewOnInjective}
             />
             <MenuItem 
               icon={TrendingUp} 

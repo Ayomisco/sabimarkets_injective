@@ -119,6 +119,7 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
   const [portfolioSubTab, setPortfolioSubTab] = useState<'bets' | 'history'>('bets');
   const [positions, setPositions] = useState<OnChainPosition[]>([]);
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
+  const [portfolioRefreshKey, setPortfolioRefreshKey] = useState(0);
   const [isCreateOpen, setCreateOpen] = useState(false);
   const { address } = useAccount();
   const { openConnectModal } = useConnectModal();
@@ -148,13 +149,15 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
 
   // Load on-chain portfolio
   useEffect(() => {
-    if (!address || activeTab !== 'portfolio' || feedMarkets.length === 0) return;
+    if (!address || activeTab !== 'portfolio') return;
+    if (feedMarkets.length === 0) return;
     setLoadingPortfolio(true);
+    setPositions([]);
     fetchOnChainPortfolio(address, feedMarkets)
       .then(setPositions)
       .catch(console.error)
       .finally(() => setLoadingPortfolio(false));
-  }, [address, activeTab, feedMarkets]);
+  }, [address, activeTab, feedMarkets, portfolioRefreshKey]);
 
   const totalStaked = positions.reduce((s, p) => s + p.stakeUSDC, 0);
   const totalCurrentValue = positions.reduce((s, p) => s + p.currentValue, 0);
@@ -175,7 +178,7 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
             ) : 'My Markets'}
           </button>
         ))}
-        <button onClick={() => setCreateOpen(true)}
+        <button onClick={() => address ? setCreateOpen(true) : openConnectModal?.()}
           className="cursor-pointer px-4 py-2 rounded-lg font-semibold text-[13px] text-[#00D26A] border border-[#00D26A]/20 bg-[#00D26A]/05 hover:bg-[#00D26A]/10 transition-all flex items-center gap-1.5">
           <Plus size={13} /> Create
         </button>
@@ -227,19 +230,27 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
                 ))}
               </div>
 
-              {/* Sub-tabs */}
-              <div className="flex gap-1 mb-6 bg-white/[0.03] border border-white/[0.06] p-1 rounded-xl w-max">
-                <button onClick={() => setPortfolioSubTab('bets')}
-                  className={`cursor-pointer px-4 py-2 rounded-lg text-[13px] font-semibold flex items-center gap-2 transition-all ${
-                    portfolioSubTab === 'bets' ? 'bg-[#00D26A]/10 text-[#00D26A] border border-[#00D26A]/20' : 'text-[#7A7068] hover:text-white'
-                  }`}>
-                  <Activity size={14} /> Active Bets
-                </button>
-                <button onClick={() => setPortfolioSubTab('history')}
-                  className={`cursor-pointer px-4 py-2 rounded-lg text-[13px] font-semibold flex items-center gap-2 transition-all ${
-                    portfolioSubTab === 'history' ? 'bg-white/[0.08] text-white border border-white/10' : 'text-[#7A7068] hover:text-white'
-                  }`}>
-                  <Clock size={14} /> History
+              {/* Sub-tabs + Refresh */}
+              <div className="flex items-center gap-3 mb-6 flex-wrap">
+                <div className="flex gap-1 bg-white/[0.03] border border-white/[0.06] p-1 rounded-xl">
+                  <button onClick={() => setPortfolioSubTab('bets')}
+                    className={`cursor-pointer px-4 py-2 rounded-lg text-[13px] font-semibold flex items-center gap-2 transition-all ${
+                      portfolioSubTab === 'bets' ? 'bg-[#00D26A]/10 text-[#00D26A] border border-[#00D26A]/20' : 'text-[#7A7068] hover:text-white'
+                    }`}>
+                    <Activity size={14} /> Active Bets
+                  </button>
+                  <button onClick={() => setPortfolioSubTab('history')}
+                    className={`cursor-pointer px-4 py-2 rounded-lg text-[13px] font-semibold flex items-center gap-2 transition-all ${
+                      portfolioSubTab === 'history' ? 'bg-white/[0.08] text-white border border-white/10' : 'text-[#7A7068] hover:text-white'
+                    }`}>
+                    <Clock size={14} /> History
+                  </button>
+                </div>
+                <button
+                  onClick={() => setPortfolioRefreshKey(k => k + 1)}
+                  disabled={loadingPortfolio}
+                  className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/[0.08] text-[#7A7068] hover:text-white hover:bg-white/[0.05] text-[12px] font-medium transition-all disabled:opacity-40">
+                  <Loader2 size={12} className={loadingPortfolio ? 'animate-spin' : ''} /> Refresh
                 </button>
               </div>
 
