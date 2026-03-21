@@ -145,10 +145,10 @@ export function MarketCard({ market, index, onMarketClick, onBetClick }: MarketC
           <span className="text-[11px] font-medium">${stringVol} Vol.</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-3.5 h-3.5 rounded-full bg-[#1A1511] border border-white/10 flex items-center justify-center">
-            <span className="text-[7px] text-[#7A7068] font-bold">P</span>
+          <div className="w-3.5 h-3.5 rounded-full bg-[#00D26A]/10 border border-[#00D26A]/20 flex items-center justify-center">
+            <span className="text-[7px] text-[#00D26A] font-bold">INJ</span>
           </div>
-          <span className="text-[10px] text-[#7A7068]">Polymarket</span>
+          <span className="text-[10px] text-[#7A7068]">Injective EVM</span>
         </div>
       </div>
     </motion.div>
