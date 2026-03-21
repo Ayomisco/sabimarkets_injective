@@ -1,230 +1,178 @@
 import { Market } from './types';
+import { createPublicClient, http, parseUnits } from 'viem';
 
-const GAMMA_API_URL = 'https://gamma-api.polymarket.com';
+// ─── Injective EVM Testnet ────────────────────────────────────────────────────
 
-// Raw response type from Polymarket API (before parsing)
-type RawMarketResponse = Record<string, unknown>;
+const injectiveTestnet = {
+  id: 1439,
+  name: 'Injective EVM Testnet',
+  nativeCurrency: { name: 'Injective', symbol: 'INJ', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://k8s.testnet.json-rpc.injective.network/'] },
+  },
+} as const;
 
-const AFRICAN_KEYWORDS = [
-    // Countries
-    'africa', 'african', 'algeria', 'angola', 'benin', 'botswana', 'burkina faso', 'burundi', 
-    'cabo verde', 'cape verde', 'cameroon', 'central african republic', 'chad', 'comoros', 
-    'congo', "cote d'ivoire", 'ivory coast', 'djibouti', 'egypt', 'equatorial guinea', 
-    'eritrea', 'eswatini', 'swaziland', 'ethiopia', 'gabon', 'gambia', 'ghana', 'guinea', 
-    'guinea-bissau', 'kenya', 'lesotho', 'liberia', 'libya', 'madagascar', 'malawi', 'mali', 
-    'mauritania', 'mauritius', 'morocco', 'mozambique', 'namibia', 'niger', 'nigeria', 
-    'rwanda', 'sao tome and principe', 'senegal', 'seychelles', 'sierra leone', 'somalia', 
-    'south africa', 'south sudan', 'sudan', 'tanzania', 'togo', 'tunisia', 'uganda', 'zambia', 
-    'zimbabwe', 'nigerian', 'kenyan', 'ghanaian', 'ethiopian', 'south african', 'egyptian',
-    
-    // Major cities
-    'lagos', 'abuja', 'nairobi', 'johannesburg', 'pretoria', 'cape town', 'durban', 'cairo', 
-    'addis ababa', 'kigali', 'dar es salaam', 'kampala', 'lusaka', 'harare', 'maputo', 'luanda', 
-    'dakar', 'casablanca', 'tunis', 'accra', 'kumasi', 'kinshasa', 'algiers', 'khartoum',
-    
-    // Current leaders & politicians
-    'tinubu', 'buhari', 'ramaphosa', 'cyril', 'ruto', 'william ruto', 'akufo-addo', 'akuffo', 
-    'nana addo', 'mnangagwa', 'emmerson', 'kagame', 'paul kagame', 'uhuru', 'kenyatta', 
-    'sisi', 'el-sisi', 'abdel fattah', 'tshisekedi', 'felix', 'museveni', 'yoweri', 
-    'magufuli', 'samia', 'macky sall', 'faye', 'bassirou',
-    
-    // Sports & culture
-    'afcon', 'africa cup', 'african cup', 'can 202', 'caf', 'african champions league', 
-    'nigerian premier', 'npfl', 'kenyan premier', 'south african premier',
-    'big brother naija', 'bbnaija', 'bbn', 'african music', 'amapiano', 'afrobeats', 
-    'afrobeat', 'burna boy', 'wizkid', 'davido', 'tiwa savage', 'yemi alade',
-    
-    // Organizations & regional
-    'ecowas', 'african union', 'au summit', 'east africa', 'east african', 'west africa', 
-    'west african', 'north africa', 'maghreb', 'francophone africa', 'anglophone', 
-    'sahel', 'eac', 'sadc', 'southern africa',
-    
-    // Economy & finance
-    'naira', 'ngn', 'cedi', 'ghs', 'rand', 'zar', 'shilling', 'kes', 'cfa franc', 
-   'west african eco', 'tzs', 'ugx', 'zmw', 'mwk', 'african development bank', 
-    'adb', 'imf africa', 'world bank africa',
-    
-    // Tech & startups
-    'lagos tech', 'nairobi tech', 'african fintech', 'african startup', 'flutterwave', 
-    'paystack', 'jumia', 'kuda', 'opay', 'palmpay', 'andela', 'mpesa', 'm-pesa', 
-    'африка'
-];
+const publicClient = createPublicClient({
+  chain: injectiveTestnet,
+  transport: http(process.env.NEXT_PUBLIC_INJ_EVM_RPC_URL || 'https://k8s.testnet.json-rpc.injective.network/'),
+});
 
-/**
- * Polymarket native tags for category-based fetching
- */
-const POLYMARKET_TAGS = {
-    sports: 'sports',
-    crypto: 'crypto',
-    politics: 'politics',
-    pop_culture: 'pop-culture',
-    business: 'business',
-    science: 'science',
-};
+// ─── Contract addresses ───────────────────────────────────────────────────────
 
-/**
- * Helper to categorize markets for the UI
- */
-function assignCategory(market: Market): string {
-    const q = (market.question + ' ' + (market.description || '')).toLowerCase();
-    
-    // Explicit categorization based on keywords
-    if (q.includes('crypto') || q.includes('bitcoin') || q.includes('btc') || q.includes('eth') || q.includes('solana') || q.includes('airdrop') || q.includes('nft') || q.includes('doge')) return 'Crypto';
-    if (q.includes('election') || q.includes('president') || q.includes('policy') || q.includes('tinubu') || q.includes('trump') || q.includes('biden') || q.includes('harris')) return 'Politics';
-    if (q.includes('football') || q.includes('afcon') || q.includes('sports') || q.includes('match') || q.includes('team') || q.includes('nfl') || q.includes('nba')) return 'Sports';
-    if (q.includes('rate') || q.includes('inflation') || q.includes('naira') || q.includes('usd') || q.includes('economy') || q.includes('fed')) return 'Economy';
-    if (q.includes('movie') || q.includes('artist') || q.includes('award') || q.includes('music') || q.includes('oscars') || q.includes('grammy')) return 'Entertainment';
-    
-    return 'Global';
+const FACTORY_ADDRESS = (process.env.NEXT_PUBLIC_SABI_FACTORY_ADDRESS ||
+  '0x51aFd4fa61c0368249F057B2E0b691991fb1692A') as `0x${string}`;
+
+// ─── Minimal ABIs ─────────────────────────────────────────────────────────────
+
+const FACTORY_ABI = [
+  {
+    name: 'getAllMarkets',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address[]' }],
+  },
+] as const;
+
+const MARKET_ABI = [
+  {
+    name: 'getMarketInfo',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [
+      {
+        type: 'tuple',
+        components: [
+          { name: 'question', type: 'string' },
+          { name: 'category', type: 'string' },
+          { name: 'imageURI', type: 'string' },
+          { name: 'creator', type: 'address' },
+          { name: 'closingTime', type: 'uint256' },
+          { name: 'totalPool', type: 'uint256' },
+          { name: 'status', type: 'uint8' },
+          { name: 'winningOutcome', type: 'uint256' },
+          { name: 'resolved', type: 'bool' },
+          { name: 'resolutionSource', type: 'string' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'getOutcomes',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'string[]' }],
+  },
+  {
+    name: 'getAllOutcomePools',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256[]' }],
+  },
+] as const;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function assignCategory(question: string, contractCategory: string): string {
+  const q = (question + ' ' + contractCategory).toLowerCase();
+  if (q.includes('crypto') || q.includes('bitcoin') || q.includes('btc') || q.includes('inj') || q.includes('eth')) return 'Crypto';
+  if (q.includes('election') || q.includes('president') || q.includes('politic') || q.includes('tinubu') || q.includes('apc') || q.includes('pdp')) return 'Politics';
+  if (q.includes('football') || q.includes('afcon') || q.includes('eagle') || q.includes('sport') || q.includes('match') || q.includes('world cup') || q.includes('wc')) return 'Sports';
+  if (q.includes('naira') || q.includes('ngn') || q.includes('usd') || q.includes('rate') || q.includes('inflation') || q.includes('economy')) return 'Economy';
+  if (q.includes('bbnaija') || q.includes('movie') || q.includes('artist') || q.includes('award') || q.includes('music')) return 'Entertainment';
+  return 'Global';
 }
 
-/**
- * Helper to parse and normalize market data from Polymarket API
- */
-function parseMarket(m: RawMarketResponse): Market {
-    const outcomePrices = typeof m.outcomePrices === 'string' ? JSON.parse(m.outcomePrices as string) : (m.outcomePrices || ['0.5', '0.5']);
-    const clobTokenIds: string[] = typeof m.clobTokenIds === 'string' ? JSON.parse(m.clobTokenIds as string) : (m.clobTokenIds as string[] || []);
-    
-    // Normalize tokens array so token_id is always available
-    const tokens = Array.isArray(m.tokens) && (m.tokens as unknown[]).length > 0
-        ? m.tokens
-        : clobTokenIds.map((id: string, i: number) => ({
-            token_id: id,
-            outcome: i === 0 ? 'Yes' : 'No',
-          }));
-          
+function formatPool(wei: bigint): string {
+  // USDC has 6 decimals
+  return (Number(wei) / 1e6).toFixed(2);
+}
+
+function computePrices(pools: readonly bigint[], totalPool: bigint): string[] {
+  if (totalPool === 0n) {
+    return pools.map(() => (1 / pools.length).toFixed(4));
+  }
+  return pools.map((p) => (Number(p) / Number(totalPool)).toFixed(4));
+}
+
+async function fetchMarketData(address: `0x${string}`): Promise<Market | null> {
+  try {
+    const [info, outcomes, pools] = await Promise.all([
+      publicClient.readContract({ address, abi: MARKET_ABI, functionName: 'getMarketInfo' }),
+      publicClient.readContract({ address, abi: MARKET_ABI, functionName: 'getOutcomes' }),
+      publicClient.readContract({ address, abi: MARKET_ABI, functionName: 'getAllOutcomePools' }),
+    ]);
+
+    const { question, category, imageURI, creator, closingTime, totalPool, status, winningOutcome, resolved } = info;
+
+    const outcomePrices = computePrices(pools, totalPool);
+    const outcomePools = pools.map((p) => p.toString());
+    const tokens = (outcomes as string[]).map((outcome, i) => ({
+      token_id: `${address}_${i}`,
+      outcome,
+      price: parseFloat(outcomePrices[i]),
+    }));
+
     return {
-        ...m,
-        condition_id: (m.conditionId as string) || (m.condition_id as string) || '',
-        slug: (m.slug as string) || '',
-        outcomes: typeof m.outcomes === 'string' ? JSON.parse(m.outcomes as string) : (m.outcomes || ['Yes', 'No']),
-        outcomePrices,
-        clobTokenIds,
-        tokens,
-    } as Market;
+      id: address,
+      condition_id: address,
+      slug: address,
+      question: question as string,
+      description: `${category} market on Injective EVM`,
+      outcomes: outcomes as string[],
+      outcomePrices,
+      volume: formatPool(totalPool),
+      active: status === 0, // Status.OPEN
+      closed: status !== 0,
+      endDate: new Date(Number(closingTime) * 1000).toISOString(),
+      image: imageURI as string,
+      tokens,
+      clobTokenIds: [],
+      marketAddress: address,
+      category: category as string,
+      outcomePools,
+      creator: creator as string,
+      resolved: resolved as boolean,
+      winningOutcome: Number(winningOutcome),
+      uiCategory: assignCategory(question as string, category as string),
+    };
+  } catch (err) {
+    console.error(`Error fetching market ${address}:`, err);
+    return null;
+  }
 }
 
-/**
- * Fetch markets by Polymarket's native tag with parallel requests
- */
-async function fetchByTag(tag: string, limit: number = 50): Promise<Market[]> {
-    try {
-        const res = await fetch(
-            `${GAMMA_API_URL}/markets?tag=${tag}&active=true&closed=false&limit=${limit}`,
-            { cache: 'no-store' }
-        );
-        if (!res.ok) return [];
-        const data = await res.json() as RawMarketResponse[];
-        return data.map(parseMarket);
-    } catch (error) {
-        console.error(`Error fetching ${tag} markets:`, error);
-        return [];
-    }
-}
-
-/**
- * Fetch high-volume global markets (no tag filter)
- */
-async function fetchHighVolumeMarkets(limit: number = 100): Promise<Market[]> {
-    try {
-        const res = await fetch(
-            `${GAMMA_API_URL}/markets?active=true&closed=false&limit=${limit}`,
-            { cache: 'no-store' }
-        );
-        if (!res.ok) return [];
-        const data = await res.json() as RawMarketResponse[];
-        return data.map(parseMarket);
-    } catch (error) {
-        console.error('Error fetching high-volume markets:', error);
-        return [];
-    }
-}
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function fetchAfricanMarkets(): Promise<(Market & { uiCategory: string })[]> {
   try {
-    // Parallel fetch from multiple Polymarket categories + high-volume markets
-    // This reduces payload size and leverages Polymarket's native categorization
-    const [sportsMarkets, cryptoMarkets, politicsMarkets, cultureMarkets, businessMarkets, highVolumeMarkets] = await Promise.all([
-        fetchByTag(POLYMARKET_TAGS.sports, 40),
-        fetchByTag(POLYMARKET_TAGS.crypto, 40),
-        fetchByTag(POLYMARKET_TAGS.politics, 30),
-        fetchByTag(POLYMARKET_TAGS.pop_culture, 30),
-        fetchByTag(POLYMARKET_TAGS.business, 30),
-        fetchHighVolumeMarkets(100),
-    ]);
+    const addresses = await publicClient.readContract({
+      address: FACTORY_ADDRESS,
+      abi: FACTORY_ABI,
+      functionName: 'getAllMarkets',
+    }) as `0x${string}`[];
 
-    // Combine all markets and deduplicate by condition_id
-    const allMarkets = [
-        ...sportsMarkets,
-        ...cryptoMarkets, 
-        ...politicsMarkets,
-        ...cultureMarkets,
-        ...businessMarkets,
-        ...highVolumeMarkets,
-    ];
-    
-    const uniqueMarkets = Array.from(
-        new Map(allMarkets.map(m => [m.condition_id, m])).values()
-    );
-    
-    // Sort by volume (highest first)
-    const sortedData = uniqueMarkets.sort((a, b) => parseFloat(b.volume) - parseFloat(a.volume));
+    if (!addresses || addresses.length === 0) return [];
 
-    // Prioritize African markets
-    const strictAfrican = sortedData.filter((market) => {
-        const questionText = (market.question + ' ' + (market.description || '')).toLowerCase();
-        return AFRICAN_KEYWORDS.some((keyword) => questionText.includes(keyword));
-    });
+    const markets = await Promise.all(addresses.map(fetchMarketData));
+    const valid = markets.filter((m): m is Market => m !== null);
 
-    // Filter out overly US-centric politics for fallback markets
-    const avoidKeywords = [
-        'congress', 'california', 'new york', 'texas', 'florida',
-        'fbi', 'cia', 'u.s. treasury', 'mar-a-lago'
-    ];
-    
-    // Target at least 80 markets for good coverage
-    const TARGET_MIN_MARKETS = 80;
-    let fallbackMarkets: Market[] = [];
-    
-    if (strictAfrican.length < TARGET_MIN_MARKETS) {
-      const needed = TARGET_MIN_MARKETS - strictAfrican.length;
-      fallbackMarkets = sortedData
-        .filter(m => {
-          if (strictAfrican.includes(m)) return false;
-          const q = (m.question + ' ' + (m.description || '')).toLowerCase();
-          return !avoidKeywords.some(kw => q.includes(kw));
-        })
-        .slice(0, needed);
-    }
-
-    const finalFeed = [...strictAfrican, ...fallbackMarkets].map(m => ({
-        ...m,
-        uiCategory: assignCategory(m)
-    }));
-
-    return finalFeed;
-  } catch (error) {
-    console.error('Error fetching Polymarket Markets:', error);
+    // Sort active markets first, then by pool size
+    return valid
+      .sort((a, b) => {
+        if (a.active !== b.active) return a.active ? -1 : 1;
+        return parseFloat(b.volume) - parseFloat(a.volume);
+      })
+      .map((m) => ({ ...m, uiCategory: m.uiCategory || 'Global' }));
+  } catch (err) {
+    console.error('Error fetching SabiMarket markets:', err);
     return [];
   }
 }
 
-export async function getMarket(conditionId: string): Promise<Market | null> {
-    try {
-        const res = await fetch(`${GAMMA_API_URL}/markets?condition_id=${conditionId}`);
-        if (!res.ok) return null;
-        const data = await res.json();
-        const m = data[0];
-        if (!m) return null;
-        return {
-            ...m,
-            condition_id: m.conditionId || m.condition_id || '',
-            slug: m.slug || '',
-            outcomes: typeof m.outcomes === 'string' ? JSON.parse(m.outcomes) : m.outcomes,
-            outcomePrices: typeof m.outcomePrices === 'string' ? JSON.parse(m.outcomePrices) : m.outcomePrices,
-            clobTokenIds: typeof m.clobTokenIds === 'string' ? JSON.parse(m.clobTokenIds) : m.clobTokenIds,
-        };
-    } catch {
-        return null;
-    }
+export async function getMarket(address: string): Promise<Market | null> {
+  return fetchMarketData(address as `0x${string}`);
 }

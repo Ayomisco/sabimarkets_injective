@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Users, DollarSign, Activity, Eye, TrendingUp, TrendingDown, Wallet, Globe } from 'lucide-react';
+import { ArrowLeft, Users, DollarSign, Activity, Eye, TrendingUp, TrendingDown, Wallet, Globe, LogOut, Settings } from 'lucide-react';
+
+interface AdminUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+}
 
 interface AnalyticsData {
   overview: {
@@ -54,22 +61,38 @@ interface AnalyticsData {
   }>;
 }
 
-// Simple admin auth - hardcode admin wallet addresses
-const ADMIN_WALLETS = [
-  '0xYourAdminWalletAddress1', // Replace with your wallet
-  '0xYourAdminWalletAddress2', // Add more admin wallets
-];
-
 export default function AdminDashboard() {
-  const { address, isConnected } = useAccount();
+  const router = useRouter();
+  const [admin, setAdmin] = useState<AdminUser | null>(null);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authChecking, setAuthChecking] = useState(true);
   const [days, setDays] = useState(7);
 
-  const isAdmin = isConnected && address && ADMIN_WALLETS.includes(address);
-
+  // Check authentication
   useEffect(() => {
-    if (!isAdmin) return;
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/admin/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          setAdmin(data.admin);
+        } else {
+          router.push('/admin/login');
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        router.push('/admin/login');
+      }
+      setAuthChecking(false);
+    };
+
+    checkAuth();
+  }, [router]);
+
+  // Fetch analytics data
+  useEffect(() => {
+    if (!admin) return;
 
     const fetchData = async () => {
       setLoading(true);
@@ -84,28 +107,23 @@ export default function AdminDashboard() {
     };
 
     fetchData();
-  }, [isAdmin, days]);
+  }, [admin, days]);
 
-  if (!isConnected) {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/admin/auth/logout', { method: 'POST' });
+      router.push('/admin/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  if (authChecking) {
     return (
       <div className="min-h-screen bg-[#080706] text-white flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Admin Dashboard</h1>
-          <p className="text-[#7A7068] mb-6">Connect your wallet to access</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-[#080706] text-white flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Access Denied</h1>
-          <p className="text-[#7A7068] mb-6">This wallet does not have admin access</p>
-          <Link href="/" className="text-[#00D26A] hover:underline">
-            ← Back to Home
-          </Link>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00D26A] mx-auto mb-4"></div>
+          <p className="text-[#7A7068]">Checking authentication...</p>
         </div>
       </div>
     );
@@ -133,7 +151,14 @@ export default function AdminDashboard() {
             <Link href="/" className="text-[#7A7068] hover:text-white transition-colors">
               <ArrowLeft size={20} />
             </Link>
-            <h1 className="text-xl font-bold">Admin Dashboard</h1>
+            <div>
+              <h1 className="text-xl font-bold">Admin Dashboard</h1>
+              {admin && (
+                <p className="text-xs text-[#7A7068]">
+                  {admin.name || admin.email} • {admin.role}
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <select
@@ -145,6 +170,20 @@ export default function AdminDashboard() {
               <option value={30}>Last 30 days</option>
               <option value={90}>Last 90 days</option>
             </select>
+            <Link
+              href="/admin/settings"
+              className="flex items-center gap-2 px-3 py-1.5 bg-[#0F0D0B] border border-white/[0.1] rounded-lg text-sm hover:bg-white/[0.05] transition-colors"
+            >
+              <Settings size={16} />
+              <span className="hidden sm:inline">Settings</span>
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-3 py-1.5 bg-[#0F0D0B] border border-white/[0.1] rounded-lg text-sm hover:bg-white/[0.05] transition-colors"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
           </div>
         </div>
       </header>

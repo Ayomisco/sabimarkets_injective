@@ -7,11 +7,12 @@ const handleI18n = createMiddleware(routing);
 export default function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Never run i18n middleware on API routes, static files, or Next internals
+  // Never run i18n middleware on API routes, static files, admin, or Next internals
   if (
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/_vercel/') ||
+    pathname.startsWith('/admin') ||  // Exclude admin dashboard from i18n
     // Block common bot/scanner paths immediately
     pathname.includes('/wp-admin') ||
     pathname.includes('/wp-login') ||
@@ -32,8 +33,8 @@ export default function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Only run on page routes, not api / static
+  // Only run on page routes, not api / static / admin
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|site.webmanifest|robots.txt|logo.*|icon.*).*)',
+    '/((?!api|admin|_next/static|_next/image|favicon.ico|site.webmanifest|robots.txt|logo.*|icon.*).*)',
   ],
 };

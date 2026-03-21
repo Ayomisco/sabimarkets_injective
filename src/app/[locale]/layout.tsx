@@ -12,8 +12,8 @@ export const metadata: Metadata = {
     default: 'SabiMarket — Africa\'s Native Prediction Market',
     template: '%s | SabiMarket',
   },
-  description: 'SabiMarket is Africa\'s first decentralised prediction market. Bet on real-world events across politics, sports, economy, and more — powered by Polymarket and built for Africa.',
-  keywords: ['prediction market', 'africa', 'polymarket', 'crypto', 'betting', 'nigeria', 'kenya', 'ghana', 'defi', 'web3','prediction', 'sabimarket'],
+  description: 'SabiMarket is Africa\'s first sovereign prediction market on Injective blockchain. Bet on elections, football, crypto prices, and more — built for Africa.',
+  keywords: ['prediction market', 'africa', 'injective', 'crypto', 'betting', 'nigeria', 'kenya', 'ghana', 'defi', 'web3', 'prediction', 'sabimarket'],
   authors: [{ name: 'SabiMarket', url: 'https://sabimarket.xyz' }],
   creator: 'SabiMarket',
   metadataBase: new URL('https://sabimarket.xyz'),
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     url: 'https://sabimarket.xyz',
     siteName: 'SabiMarket',
     title: 'SabiMarket — Africa\'s Native Prediction Market',
-    description: 'Africa\'s first decentralised prediction market. Bet on real-world events — powered by Polymarket.',
+    description: 'Africa\'s first sovereign prediction market on Injective. Bet on real-world events — elections, football, crypto, economy.',
     images: [
       {
         url: '/logo.png',
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'SabiMarket — Africa\'s Native Prediction Market',
-    description: 'Africa\'s first decentralised prediction market. Bet on real-world events.',
+    description: 'Africa\'s first sovereign prediction market on Injective. Bet on real-world events.',
     images: ['/logo.png'],
     creator: '@sabimarket',
   },

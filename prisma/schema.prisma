@@ -136,8 +136,29 @@ model ModeratedMarket {
 }
 
 model AdminUser {
-  id            String   @id @default(uuid())
-  walletAddress String   @unique
-  role          String   @default("admin") // admin, moderator
-  createdAt     DateTime @default(now())
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  name         String?
+  role         String        @default("admin") // admin, moderator, superadmin
+  isActive     Boolean       @default(true)
+  lastLogin    DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  sessions     AdminSession[]
+
+  @@index([email])
+}
+
+model AdminSession {
+  id        String    @id @default(uuid())
+  adminId   String
+  admin     AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  token     String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  @@index([adminId])
+  @@index([token])
+  @@index([expiresAt])
 }

@@ -4,22 +4,34 @@ import { useState, useEffect } from 'react';
 import { Market } from '@/lib/polymarket/types';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { X, Loader2, Zap, ArrowUpRight, ArrowDownRight, AlertTriangle, ExternalLink } from 'lucide-react';
-import { useAccount, useSignTypedData, useReadContract } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useToast } from '@/components/Toast';
-import { formatUnits } from 'viem';
-import { useMarketStore } from '@/store/marketStore';
+import { formatUnits, parseUnits } from 'viem';
 
-// Polymarket CTF Exchange on Polygon
-const CTF_EXCHANGE = '0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E';
-// USDC (PoS) on Polygon
-const USDC_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
+const USDC_ADDRESS = (process.env.NEXT_PUBLIC_MOCK_USDC_ADDRESS ||
+  '0x652144cAEaB64754F712Bd4D490F9E423397369c') as `0x${string}`;
 
 const USDC_ABI = [
   { name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
 ] as const;
 
-// No spread — use Polymarket's exact prices
+const SABIMARKET_ABI = [
+  {
+    name: 'placeBet',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'outcomeIndex', type: 'uint256' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'referrer', type: 'address' },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const EXPLORER_URL = process.env.NEXT_PUBLIC_INJ_EVM_EXPLORER_URL || 'https://testnet.blockscout.injective.network';
 
 export function BetModal({
   isOpen, onClose, market, selectedOutcome: initialOutcome,
@@ -28,17 +40,19 @@ export function BetModal({
   selectedOutcome: string | null; currentPrice?: number;
 }) {
   const [amount, setAmount] = useState<number | string>(10);
-  const [isSigning, setIsSigning] = useState(false);
-  const [step, setStep] = useState<'idle' | 'signing' | 'submitting' | 'done' | 'error'>('idle');
-  const [txError, setTxError] = useState('');
   const [selectedOutcome, setSelectedOutcome] = useState<string>(initialOutcome || "YES");
-
-  // Get live prices from store
-  const { livePrices } = useMarketStore();
+  const [step, setStep] = useState<'idle' | 'approving' | 'approved' | 'betting' | 'done' | 'error'>('idle');
+  const [txError, setTxError] = useState('');
+  const [approveTxHash, setApproveTxHash] = useState<`0x${string}` | undefined>();
+  const [betTxHash, setBetTxHash] = useState<`0x${string}` | undefined>();
 
   const { address } = useAccount();
-  const { signTypedDataAsync } = useSignTypedData();
   const { success: toastSuccess, error: toastError, warning: toastWarning, info: toastInfo } = useToast();
+  const { writeContractAsync } = useWriteContract();
+
+  const marketAddress = market?.marketAddress as `0x${string}` | undefined;
+  const validAmount = typeof amount === 'string' && amount === "" ? 0 : Number(amount);
+  const amountWei = parseUnits(validAmount.toString(), 6); // USDC 6 decimals
 
   // Read USDC balance
   const { data: usdcBalance } = useReadContract({
@@ -48,205 +62,137 @@ export function BetModal({
     args: address ? [address] : undefined,
   });
 
-  // Sync outcome when modal opens with new selection
+  // Read USDC allowance for this market
+  const { data: usdcAllowance, refetch: refetchAllowance } = useReadContract({
+    address: USDC_ADDRESS,
+    abi: USDC_ABI,
+    functionName: 'allowance',
+    args: address && marketAddress ? [address, marketAddress] : undefined,
+  });
+
+  // Wait for approve tx
+  const { isSuccess: approveConfirmed } = useWaitForTransactionReceipt({ hash: approveTxHash });
+
+  // Wait for bet tx
+  const { isSuccess: betConfirmed } = useWaitForTransactionReceipt({ hash: betTxHash });
+
+  // Sync outcome when modal opens
   useEffect(() => {
-    if (initialOutcome && isOpen) {
-      setSelectedOutcome(initialOutcome);
-    }
+    if (initialOutcome && isOpen) setSelectedOutcome(initialOutcome);
   }, [initialOutcome, isOpen]);
 
-  // Reset state when modal closes
+  // Reset when modal closes
   useEffect(() => {
-    if (!isOpen) {
-      setStep('idle');
-      setTxError('');
-    }
+    if (!isOpen) { setStep('idle'); setTxError(''); setApproveTxHash(undefined); setBetTxHash(undefined); }
   }, [isOpen]);
 
-  // Early return after all hooks
+  // When approve confirms, auto-place bet
+  useEffect(() => {
+    if (approveConfirmed && step === 'approving') {
+      setStep('approved');
+      refetchAllowance();
+      placeBetTx();
+    }
+  }, [approveConfirmed]);
+
+  // When bet confirms, show done
+  useEffect(() => {
+    if (betConfirmed && step === 'betting') {
+      setStep('done');
+      toastSuccess('Bet placed!', `${shares} ${selectedOutcome} shares confirmed on Injective.`);
+      setTimeout(() => { onClose(); setStep('idle'); }, 2500);
+    }
+  }, [betConfirmed]);
+
   if (!market || !selectedOutcome) return null;
 
-  const outcomes = market.outcomes || ["Yes", "No"];
-  
-  // Find the selected outcome index
-  const selectedIndex = outcomes.findIndex(o => 
-    o.toLowerCase() === selectedOutcome.toLowerCase()
-  );
-  const outcomeIndex = selectedIndex >= 0 ? selectedIndex : 0;
-  
-  // Determine accent color based on outcome position
-  let accentColor = '#00D26A'; // green (first outcome / YES)
+  const outcomes = market.outcomes || ["YES", "NO"];
+  const outcomeIndex = Math.max(0, outcomes.findIndex(o => o.toLowerCase() === selectedOutcome.toLowerCase()));
+
+  let accentColor = '#00D26A';
   if (outcomes.length === 2) {
-    // Binary: green for first, red for second
     accentColor = outcomeIndex === 0 ? '#00D26A' : '#FF4560';
   } else if (outcomes.length > 2) {
-    // Multi-outcome: green first, blue middle, red last
-    if (outcomeIndex === outcomes.length - 1) {
-      accentColor = '#FF4560'; // red
-    } else if (outcomeIndex > 0) {
-      accentColor = '#3B82F6'; // blue
-    }
+    if (outcomeIndex === outcomes.length - 1) accentColor = '#FF4560';
+    else if (outcomeIndex > 0) accentColor = '#3B82F6';
   }
 
-  // Get prices from Polymarket data (live prices or fallback to market data)
-  const selectedTokenId = market.tokens?.[outcomeIndex]?.token_id;
-  const selectedPrice = selectedTokenId && livePrices[selectedTokenId] !== undefined
-    ? livePrices[selectedTokenId]
-    : parseFloat(market.outcomePrices?.[outcomeIndex] || "0.5");
-  
-  // Use the correct price based on selected outcome
-  const basePrice = selectedPrice;
-
-  const validAmount = typeof amount === 'string' && amount === "" ? 0 : Number(amount);
-
-  // Use Polymarket's exact price (no spread markup)
-  const price = Math.max(0.01, Math.min(0.99, basePrice));
-
-  // Shares = amount / price per share (each share pays $1 if outcome wins)
+  const selectedPrice = parseFloat(market.outcomePrices?.[outcomeIndex] || "0.5");
+  const price = Math.max(0.01, Math.min(0.99, selectedPrice));
   const shares = price > 0 ? (validAmount / price).toFixed(1) : "0.0";
-  const potentialPayoutDollars = parseFloat(shares); // total payout if you win
-  const profitDollars = potentialPayoutDollars - validAmount; // net profit
+  const potentialPayoutDollars = parseFloat(shares);
+  const profitDollars = potentialPayoutDollars - validAmount;
   const roi = validAmount > 0 ? ((profitDollars / validAmount) * 100).toFixed(0) : "0";
 
   const usdcBalanceFormatted = usdcBalance
-    ? parseFloat(formatUnits(usdcBalance as bigint, 6)).toFixed(2)
-    : null;
+    ? parseFloat(formatUnits(usdcBalance as bigint, 6)).toFixed(2) : null;
   const hasEnoughUsdc = usdcBalance
-    ? Number(formatUnits(usdcBalance as bigint, 6)) >= validAmount
-    : true;
+    ? Number(formatUnits(usdcBalance as bigint, 6)) >= validAmount : true;
+  const hasEnoughAllowance = usdcAllowance ? (usdcAllowance as bigint) >= amountWei : false;
 
-  const tokenId = market.tokens?.[outcomeIndex]?.token_id;
+  const isBusy = step === 'approving' || step === 'approved' || step === 'betting';
+
+  const placeBetTx = async () => {
+    if (!address || !marketAddress) return;
+    try {
+      setStep('betting');
+      toastInfo('Confirming bet…', 'Waiting for transaction on Injective.');
+      const hash = await writeContractAsync({
+        address: marketAddress,
+        abi: SABIMARKET_ABI,
+        functionName: 'placeBet',
+        args: [BigInt(outcomeIndex), amountWei, '0x0000000000000000000000000000000000000000'],
+      });
+      setBetTxHash(hash);
+    } catch (err: unknown) {
+      handleError(err);
+    }
+  };
+
+  const handleError = (err: unknown) => {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    let friendly = 'Something went wrong. Please try again.';
+    if (msg.includes('rejected') || msg.includes('User rejected')) friendly = 'Transaction rejected — no bet placed.';
+    else if (msg.includes('insufficient balance')) friendly = 'Insufficient USDC balance.';
+    else if (msg !== 'Unknown error') friendly = msg.slice(0, 120);
+    setTxError(friendly);
+    setStep('error');
+    toastError('Transaction failed', friendly);
+  };
 
   const handlePlaceOrder = async () => {
-    if (!address) {
-      toastError('Wallet not connected', 'Please connect your wallet first.');
-      return;
-    }
-    if (validAmount <= 0) {
-      toastWarning('Invalid amount', 'Enter an amount greater than 0.');
-      return;
-    }
-    if (!hasEnoughUsdc) {
-      toastError('Insufficient USDC', `You need $${validAmount} USDC. Balance: $${usdcBalanceFormatted}.`);
-      return;
-    }
-    if (!tokenId) {
-      toastError('Market unavailable', 'This market does not have a valid token ID.');
-      return;
-    }
+    if (!address) { toastError('Wallet not connected', 'Please connect your wallet first.'); return; }
+    if (validAmount <= 0) { toastWarning('Invalid amount', 'Enter an amount greater than 0.'); return; }
+    if (!hasEnoughUsdc) { toastError('Insufficient USDC', `You need $${validAmount} USDC. Balance: $${usdcBalanceFormatted}.`); return; }
+    if (!marketAddress) { toastError('Market unavailable', 'Market address not found.'); return; }
 
-    setIsSigning(true);
     setTxError('');
-    setStep('signing');
 
-    try {
-      const salt = BigInt(Date.now());
-      const makerAmount = BigInt(Math.round(price * validAmount * 1_000_000));
-      const takerAmount = BigInt(Math.round(validAmount * 1_000_000));
-
-      // Sign the EIP-712 order with user's wallet
-      const signature = await signTypedDataAsync({
-        domain: {
-          name: "Polymarket CTF Exchange",
-          version: "1",
-          chainId: 137,
-          verifyingContract: CTF_EXCHANGE as `0x${string}`,
-        },
-        types: {
-          Order: [
-            { name: "salt",          type: "uint256" },
-            { name: "maker",         type: "address" },
-            { name: "signer",        type: "address" },
-            { name: "taker",         type: "address" },
-            { name: "tokenId",       type: "uint256" },
-            { name: "makerAmount",   type: "uint256" },
-            { name: "takerAmount",   type: "uint256" },
-            { name: "expiration",    type: "uint256" },
-            { name: "nonce",         type: "uint256" },
-            { name: "feeRateBps",    type: "uint256" },
-            { name: "side",          type: "uint8"   },
-            { name: "signatureType", type: "uint8"   },
-          ]
-        },
-        primaryType: "Order",
-        message: {
-          salt,
-          maker: address,
-          signer: address,
-          taker: "0x0000000000000000000000000000000000000000",
-          tokenId: BigInt(tokenId),
-          makerAmount,
-          takerAmount,
-          expiration: BigInt(0),
-          nonce: BigInt(0),
-          feeRateBps: BigInt(0),
-          side: outcomeIndex,
-          signatureType: 0,
-        }
-      });
-
-      setStep('submitting');
-      toastInfo('Submitting order…', 'Broadcasting to Polymarket CLOB.');
-
-      // POST signed order to our relay API
-      const res = await fetch('/api/clob/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tokenId,
-          side: outcomeIndex === 0 ? 'BUY' : 'SELL',
-          price: price,
-          size: validAmount,
-          userAddress: address,
-          signature,
-          salt: salt.toString(),
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Order rejected by CLOB');
+    if (!hasEnoughAllowance) {
+      try {
+        setStep('approving');
+        toastInfo('Approving USDC…', 'Please confirm in your wallet.');
+        const hash = await writeContractAsync({
+          address: USDC_ADDRESS,
+          abi: USDC_ABI,
+          functionName: 'approve',
+          args: [marketAddress, amountWei],
+        });
+        setApproveTxHash(hash);
+      } catch (err: unknown) {
+        handleError(err);
       }
-
-      setStep('done');
-      toastSuccess(
-        '🎉 Order placed!',
-        `${shares} ${selectedOutcome} shares @ ${(price * 100).toFixed(1)}¢. Order ID: ${data.orderId?.slice(0, 8)}...`
-      );
-      setTimeout(() => { onClose(); setStep('idle'); }, 2000);
-
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      
-      // User-friendly error messages
-      let msg = 'Something went wrong. Please try again.';
-      
-      if (errorMessage.includes('rejected') || errorMessage.includes('User rejected')) {
-        msg = 'You rejected the signature — no order was placed.';
-      } else if (errorMessage.includes('insufficient balance')) {
-        msg = 'Insufficient USDC balance.';
-      } else if (errorMessage.includes('temporarily unavailable')) {
-        msg = 'Trading is temporarily unavailable. Please try again in a few minutes.';
-      } else if (errorMessage.includes('contact support')) {
-        msg = 'Unable to connect to trading service. Please contact support if this persists.';
-      } else if (errorMessage !== 'Unknown error') {
-        msg = errorMessage;
-      }
-      
-      setTxError(msg);
-      setStep('error');
-      toastError('Order failed', msg);
-    } finally {
-      setIsSigning(false);
+    } else {
+      await placeBetTx();
     }
   };
 
   const statusLabel = {
     idle: `Buy ${selectedOutcome} · ${shares} Shares`,
-    signing: 'Sign in your wallet…',
-    submitting: 'Submitting to CLOB…',
-    done: '✓ Order Placed!',
+    approving: 'Approving USDC…',
+    approved: 'Approval confirmed…',
+    betting: 'Confirming bet…',
+    done: '✓ Bet Placed!',
     error: 'Try Again',
   }[step];
 
@@ -263,15 +209,12 @@ export function BetModal({
           "bg-[#0F0D0B] border border-white/[0.08] text-white p-0 overflow-hidden shadow-2xl [&>button]:hidden",
         ].join(" ")}
       >
-        {/* Mobile drag handle */}
         <div className="flex justify-center pt-3 pb-1 sm:hidden">
           <div className="w-10 h-1 rounded-full bg-white/20" />
         </div>
 
-        {/* Accent bar */}
         <div className="h-[3px] w-full" style={{ background: `linear-gradient(90deg, ${accentColor}70, ${accentColor})` }} />
 
-        {/* Header */}
         <div className="px-5 pt-4 pb-3 border-b border-white/[0.06] flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-1.5">
@@ -280,7 +223,7 @@ export function BetModal({
                 {outcomeIndex === 0 ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />} Betting {selectedOutcome}
               </div>
               <span className="text-[10px] text-[#7A7068] flex items-center gap-1">
-                <Zap size={9} className="text-[#00D26A]" /> Live · Polymarket CLOB
+                <Zap size={9} className="text-[#00D26A]" /> On-chain · Injective EVM
               </span>
             </div>
             <p className="text-[13px] text-[#7A7068] leading-snug line-clamp-2">{market.question}</p>
@@ -291,55 +234,35 @@ export function BetModal({
           </button>
         </div>
 
-        {/* Body */}
         <div className="px-5 pt-4 pb-6 flex flex-col gap-4 overflow-y-auto max-h-[72vh] sm:max-h-none">
 
           {/* Outcome Selector */}
           <div className={`grid gap-2 ${outcomes.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
             {outcomes.map((outcome, idx) => {
-              const tokenId = market.tokens?.[idx]?.token_id;
-              const price = tokenId && livePrices[tokenId] !== undefined
-                ? livePrices[tokenId]
-                : parseFloat(market.outcomePrices?.[idx] || "0.5");
-              const priceCents = Math.round(price * 100);
+              const p = parseFloat(market.outcomePrices?.[idx] || "0.5");
+              const priceCents = Math.round(p * 100);
               const isSelected = selectedOutcome?.toLowerCase() === outcome.toLowerCase();
-              
-              // Color coding: first=green, middle=blue, last=red
-              let activeColor = '#00D26A'; // green
+              let activeColor = '#00D26A';
               let shadowColor = 'rgba(0,210,106,0.35)';
               let textColor = '#000';
               if (outcomes.length > 2) {
-                if (idx === outcomes.length - 1) {
-                  activeColor = '#FF4560'; // red
-                  shadowColor = 'rgba(255,69,96,0.35)';
-                  textColor = '#fff';
-                } else if (idx > 0) {
-                  activeColor = '#3B82F6'; // blue
-                  shadowColor = 'rgba(59,130,246,0.35)';
-                  textColor = '#fff';
-                }
-              } else if (idx === 1) {
-                activeColor = '#FF4560'; // red for NO
-                shadowColor = 'rgba(255,69,96,0.35)';
-                textColor = '#fff';
-              }
-              
+                if (idx === outcomes.length - 1) { activeColor = '#FF4560'; shadowColor = 'rgba(255,69,96,0.35)'; textColor = '#fff'; }
+                else if (idx > 0) { activeColor = '#3B82F6'; shadowColor = 'rgba(59,130,246,0.35)'; textColor = '#fff'; }
+              } else if (idx === 1) { activeColor = '#FF4560'; shadowColor = 'rgba(255,69,96,0.35)'; textColor = '#fff'; }
               return (
-                <button 
-                  key={outcome}
-                  onClick={() => setSelectedOutcome(outcome)}
+                <button key={outcome} onClick={() => setSelectedOutcome(outcome)}
                   className="cursor-pointer py-3 rounded-xl border font-bold text-sm flex items-center justify-center gap-1.5 transition-all"
-                  style={isSelected 
+                  style={isSelected
                     ? { backgroundColor: activeColor, borderColor: activeColor, color: textColor, boxShadow: `0 4px 18px ${shadowColor}` }
                     : { borderColor: 'rgba(255,255,255,0.08)', color: '#7A7068' }}>
-                  {idx === 0 || (outcomes.length === 2 && idx === 0) ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                  {idx === 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
                   {outcome.toUpperCase()} · {priceCents}¢
                 </button>
               );
             })}
           </div>
 
-          {/* USDC balance indicator */}
+          {/* USDC balance */}
           {usdcBalanceFormatted && (
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-[#7A7068]">USDC Balance</span>
@@ -349,7 +272,7 @@ export function BetModal({
             </div>
           )}
 
-          {/* Amount */}
+          {/* Amount input */}
           <div>
             <p className="text-[10px] font-semibold text-[#7A7068] uppercase tracking-widest mb-2">Amount (USDC)</p>
             <div className="relative mb-2">
@@ -388,9 +311,15 @@ export function BetModal({
                 ${profitDollars.toFixed(2)} (+{roi}%)
               </span>
             </div>
+            {!hasEnoughAllowance && validAmount > 0 && (
+              <div className="flex justify-between items-center px-4 py-2.5 text-[11px]">
+                <span className="text-[#7A7068]">Steps</span>
+                <span className="text-[#F5A623]">Approve USDC → Place Bet</span>
+              </div>
+            )}
           </div>
 
-          {/* Error state */}
+          {/* Error */}
           {step === 'error' && txError && (
             <div className="flex gap-2 bg-[#FF4560]/10 border border-[#FF4560]/20 rounded-xl p-3">
               <AlertTriangle size={14} className="text-[#FF4560] shrink-0 mt-0.5" />
@@ -400,26 +329,31 @@ export function BetModal({
 
           {/* CTA */}
           <button
-            disabled={isSigning || validAmount <= 0 || !hasEnoughUsdc || step === 'done'}
+            disabled={isBusy || validAmount <= 0 || !hasEnoughUsdc || step === 'done'}
             onClick={handlePlaceOrder}
             className="cursor-pointer w-full py-4 rounded-xl font-bold text-[15px] transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            style={{ 
-              backgroundColor: step === 'done' ? '#00D26A' : accentColor, 
-              color: step === 'done' || accentColor === '#00D26A' ? '#000' : '#fff', 
-              boxShadow: `0 6px 24px ${accentColor}45` 
+            style={{
+              backgroundColor: step === 'done' ? '#00D26A' : accentColor,
+              color: step === 'done' || accentColor === '#00D26A' ? '#000' : '#fff',
+              boxShadow: `0 6px 24px ${accentColor}45`
             }}
           >
-            {(step === 'signing' || step === 'submitting') ? <><Loader2 className="animate-spin" size={16} /> {statusLabel}</> : statusLabel}
+            {isBusy ? <><Loader2 className="animate-spin" size={16} /> {statusLabel}</> : statusLabel}
           </button>
 
           <div className="flex items-center justify-center gap-2 text-[10px] text-[#7A7068] -mt-2">
-            <span>Max win: ${profitDollars > 0 ? profitDollars.toFixed(2) : '0.00'}</span>
+            <span>Max win: ${potentialPayoutDollars.toFixed(2)}</span>
             <span>·</span>
             <span>Max loss: ${validAmount.toFixed(2)}</span>
-            <span>·</span>
-            <a href={`https://polymarket.com/event/${market.slug || market.condition_id}`} target="_blank" className="flex items-center gap-1 hover:text-white transition-colors">
-              <ExternalLink size={9} /> Polymarket
-            </a>
+            {betTxHash && (
+              <>
+                <span>·</span>
+                <a href={`${EXPLORER_URL}/tx/${betTxHash}`} target="_blank"
+                   className="flex items-center gap-1 hover:text-white transition-colors">
+                  <ExternalLink size={9} /> Injective Explorer
+                </a>
+              </>
+            )}
           </div>
         </div>
       </DialogContent>
