@@ -115,8 +115,8 @@ async function fetchOnChainPortfolio(address: string, markets: Market[]): Promis
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Props) {
-  const [activeTab, setActiveTab] = useState<'markets' | 'portfolio' | 'my-markets'>('markets');
-  const [portfolioSubTab, setPortfolioSubTab] = useState<'bets' | 'history'>('bets');
+  const [activeTab, setActiveTab] = useState<'markets' | 'portfolio'>('markets');
+  const [portfolioSubTab, setPortfolioSubTab] = useState<'bets' | 'history' | 'my-markets'>('bets');
   const [positions, setPositions] = useState<OnChainPosition[]>([]);
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [portfolioRefreshKey, setPortfolioRefreshKey] = useState(0);
@@ -167,21 +167,17 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
   return (
     <div className="w-full">
       {/* ─── TABS ─── */}
-      <div className="flex items-center gap-1 bg-white/[0.03] border border-white/[0.07] p-1 rounded-xl w-max mb-6 flex-wrap">
-        {(['markets', 'portfolio', 'my-markets'] as const).map(tab => (
+      <div className="flex items-center gap-1 bg-white/[0.03] border border-white/[0.07] p-1 rounded-xl w-max mb-6">
+        {(['markets', 'portfolio'] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`cursor-pointer px-4 py-2 rounded-lg font-semibold text-[13px] transition-all ${
               activeTab === tab ? 'bg-white/[0.08] text-white shadow-sm' : 'text-[#7A7068] hover:text-white hover:bg-white/[0.04]'
             }`}>
-            {tab === 'markets' ? 'Markets' : tab === 'portfolio' ? (
+            {tab === 'markets' ? 'Markets' : (
               <>Portfolio{positions.length > 0 && <span className="ml-1.5 text-[10px] bg-[#00D26A] text-black px-1.5 py-0.5 rounded-full font-bold">{positions.length}</span>}</>
-            ) : 'My Markets'}
+            )}
           </button>
         ))}
-        <button onClick={() => address ? setCreateOpen(true) : openConnectModal?.()}
-          className="cursor-pointer px-4 py-2 rounded-lg font-semibold text-[13px] text-[#00D26A] border border-[#00D26A]/20 bg-[#00D26A]/05 hover:bg-[#00D26A]/10 transition-all flex items-center gap-1.5">
-          <Plus size={13} /> Create
-        </button>
       </div>
 
       {/* ─── PORTFOLIO TAB ─── */}
@@ -232,7 +228,7 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
 
               {/* Sub-tabs + Refresh */}
               <div className="flex items-center gap-3 mb-6 flex-wrap">
-                <div className="flex gap-1 bg-white/[0.03] border border-white/[0.06] p-1 rounded-xl">
+                <div className="flex gap-1 bg-white/[0.03] border border-white/[0.06] p-1 rounded-xl flex-wrap">
                   <button onClick={() => setPortfolioSubTab('bets')}
                     className={`cursor-pointer px-4 py-2 rounded-lg text-[13px] font-semibold flex items-center gap-2 transition-all ${
                       portfolioSubTab === 'bets' ? 'bg-[#00D26A]/10 text-[#00D26A] border border-[#00D26A]/20' : 'text-[#7A7068] hover:text-white'
@@ -244,6 +240,17 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
                       portfolioSubTab === 'history' ? 'bg-white/[0.08] text-white border border-white/10' : 'text-[#7A7068] hover:text-white'
                     }`}>
                     <Clock size={14} /> History
+                  </button>
+                  <button onClick={() => setPortfolioSubTab('my-markets')}
+                    className={`cursor-pointer px-4 py-2 rounded-lg text-[13px] font-semibold flex items-center gap-2 transition-all ${
+                      portfolioSubTab === 'my-markets' ? 'bg-white/[0.08] text-white border border-white/10' : 'text-[#7A7068] hover:text-white'
+                    }`}>
+                    <Globe size={14} /> My Markets
+                    {myCreatedMarkets.length > 0 && <span className="text-[10px] bg-white/10 text-white px-1.5 py-0.5 rounded-full font-bold">{myCreatedMarkets.length}</span>}
+                  </button>
+                  <button onClick={() => address ? setCreateOpen(true) : openConnectModal?.()}
+                    className="cursor-pointer px-4 py-2 rounded-lg text-[13px] font-semibold flex items-center gap-2 transition-all text-[#00D26A] hover:bg-[#00D26A]/10 border border-transparent hover:border-[#00D26A]/20">
+                    <Plus size={14} /> Create
                   </button>
                 </div>
                 <button
@@ -259,6 +266,43 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
                   <Loader2 size={32} className="animate-spin mb-4" />
                   <p className="text-sm">Reading positions from Injective…</p>
                 </div>
+              ) : portfolioSubTab === 'my-markets' ? (
+                myCreatedMarkets.length === 0 ? (
+                  <EmptyState icon={Globe} title="No Markets Created"
+                    desc="You haven't created any markets yet. Create your first prediction market on Injective EVM!">
+                    <button onClick={() => address ? setCreateOpen(true) : openConnectModal?.()}
+                      className="cursor-pointer bg-[#00D26A] text-black px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#00B85E] transition-colors mt-4 flex items-center gap-2">
+                      <Plus size={14} /> Create Market
+                    </button>
+                  </EmptyState>
+                ) : (
+                  <div className="space-y-4">
+                    {myCreatedMarkets.map((m, i) => {
+                      const EXPLORER_URL = process.env.NEXT_PUBLIC_INJ_EVM_EXPLORER_URL || 'https://testnet.blockscout.injective.network';
+                      return (
+                        <div key={i} className="bg-[#0F0D0B] border border-white/[0.07] rounded-2xl p-5 hover:border-white/[0.14] transition-all">
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] text-[#7A7068] uppercase font-medium mb-1">{m.category}</p>
+                              <h4 className="font-semibold text-white text-[14px] leading-snug">{m.question}</h4>
+                            </div>
+                            <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              m.active ? 'bg-[#00D26A]/10 text-[#00D26A] border border-[#00D26A]/20' : 'bg-white/[0.05] text-[#7A7068] border border-white/[0.08]'
+                            }`}>{m.active ? '🟢 Open' : '⚪ Closed'}</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-[11px] text-[#7A7068]">
+                            <span className="flex items-center gap-1"><TrendingUp size={11} />${parseFloat(m.volume).toFixed(2)} Vol.</span>
+                            <span className="flex items-center gap-1"><Clock size={11} />Closes {new Date(m.endDate).toLocaleDateString()}</span>
+                            <a href={`${EXPLORER_URL}/address/${m.marketAddress}`} target="_blank" rel="noopener noreferrer"
+                               className="flex items-center gap-1 hover:text-white transition-colors ml-auto">
+                              <ExternalLink size={11} /> Explorer
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
               ) : portfolioSubTab === 'history' ? (
                 <EmptyState icon={Clock} title="History Coming Soon"
                   desc="Resolved market history will appear here once markets are resolved." />
@@ -325,60 +369,6 @@ export function FeedAndPortfolio({ heroMarket, feedMarkets, heroYesPrice }: Prop
                 </div>
               )}
             </>
-          )}
-        </div>
-      )}
-
-      {/* ─── MY MARKETS TAB ─── */}
-      {activeTab === 'my-markets' && (
-        <div className="w-full">
-          {!address ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/[0.07] flex items-center justify-center mb-6">
-                <Globe size={28} className="text-[#7A7068]" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Connect Wallet</h3>
-              <p className="text-sm text-[#7A7068] max-w-xs mb-6">Connect to see markets you've created on Injective EVM.</p>
-              <button onClick={() => openConnectModal?.()}
-                className="cursor-pointer bg-[#00D26A] text-black px-8 py-3 rounded-xl font-bold text-sm hover:bg-[#00B85E] transition-colors flex items-center gap-2">
-                <Wallet size={16} /> Connect Wallet
-              </button>
-            </div>
-          ) : myCreatedMarkets.length === 0 ? (
-            <EmptyState icon={Plus} title="No Markets Created"
-              desc="You haven't created any markets yet. Create your first prediction market on Injective EVM!">
-              <button onClick={() => setCreateOpen(true)}
-                className="cursor-pointer bg-[#00D26A] text-black px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-[#00B85E] transition-colors mt-4 flex items-center gap-2">
-                <Plus size={14} /> Create Market
-              </button>
-            </EmptyState>
-          ) : (
-            <div className="space-y-4">
-              {myCreatedMarkets.map((m, i) => {
-                const EXPLORER_URL = process.env.NEXT_PUBLIC_INJ_EVM_EXPLORER_URL || 'https://testnet.blockscout.injective.network';
-                return (
-                  <div key={i} className="bg-[#0F0D0B] border border-white/[0.07] rounded-2xl p-5 hover:border-white/[0.14] transition-all">
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] text-[#7A7068] uppercase font-medium mb-1">{m.category}</p>
-                        <h4 className="font-semibold text-white text-[14px] leading-snug">{m.question}</h4>
-                      </div>
-                      <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        m.active ? 'bg-[#00D26A]/10 text-[#00D26A] border border-[#00D26A]/20' : 'bg-white/[0.05] text-[#7A7068] border border-white/[0.08]'
-                      }`}>{m.active ? '🟢 Open' : '⚪ Closed'}</span>
-                    </div>
-                    <div className="flex items-center gap-4 text-[11px] text-[#7A7068]">
-                      <span className="flex items-center gap-1"><TrendingUp size={11} />${parseFloat(m.volume).toFixed(2)} Vol.</span>
-                      <span className="flex items-center gap-1"><Clock size={11} />Closes {new Date(m.endDate).toLocaleDateString()}</span>
-                      <a href={`${EXPLORER_URL}/address/${m.marketAddress}`} target="_blank" rel="noopener noreferrer"
-                         className="flex items-center gap-1 hover:text-white transition-colors ml-auto">
-                        <ExternalLink size={11} /> Explorer
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           )}
         </div>
       )}
